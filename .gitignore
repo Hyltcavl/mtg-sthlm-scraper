@@ -1,0 +1,5 @@
+mtg.db
+*.json
+!alphaspel_sets.json
+!fixture_*.json
+__pycache__/
