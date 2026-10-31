@@ -55,3 +55,7 @@ Dragon's Lair blocks GitHub runner IPs (Cloudflare 403), so the workflow falls b
     node src/cli.ts scrape dragonslair --snapshot data/dragonslair.json
 
 The full scrape is ~1000+ requests, so go easy on the server: default gap is 2 s (+jitter), requests that take over 120 s fail the run, 429/5xx back off exponentially and slow the pace, a 403 stops immediately. Progress is saved per page in `data/dragonslair-progress.jsonl`, so an aborted run resumes where it stopped. Do it in batches with `--budget N` (max requests per run), repeat the same command until it prints `done`; `--fresh` starts over, `--delay MS` changes the gap. Listings are only replaced once the whole scrape is complete.
+
+To automate this on a home machine (Swedish IP), cron `scripts/scrape-dragonslair.sh`: each run does one batch (`BUDGET`, default 300 requests), and when the scrape completes it commits and pushes `data/dragonslair.json`. Example, hourly:
+
+    0 * * * * /home/teoeng/mtg-scraper/scripts/scrape-dragonslair.sh >> /tmp/dl-scrape.log 2>&1
