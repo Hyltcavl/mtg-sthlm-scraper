@@ -1,33 +1,40 @@
-# T3 – alphaspel.py
+# T3 – Alphaspel ShopScraper (`src/infra/shops/alphaspel.ts`)
 
-Källa: `https://www.alphaspel.se/1978-mtg-loskort/` → alla länkar `href="/<id>-<slug>/"`
-i `<div class="categories row">` (126 set). Per set: `?page=N` tills sidan
-saknar `class="product">` eller ingen `?page=N+1` i paginationen. 1 s sömn.
-Kör med `User-Agent` (sidan svarar 200 för Mozilla-UA).
+Källa: `https://www.alphaspel.se/1978-mtg-loskort/`. `politeFetch(1000)`
+(sajten svarar 200 med vår UA). Parsa med `cheerio`.
 
-Parsning – `re` räcker, HTML:et är regelbundet (se PLAN.md). Per `div.product`:
-- `url` = första `href` (absolut).
-- `name_full` = text i `product-name`, format `Magic löskort: <Set>: <Namn>`.
-  Split på `: ` från vänster, max 2 → `set_raw`, `name`. Titeln kan ha
-  suffix som `(Foil)`, `(EX)`, `(Played)` → foil/condition, strippa ur namnet.
-- `price_sek` = tal ur `div.price` (`10 kr`).
-- `qty` = tal ur `div.stock` (`2 på postorder`). Ingen `div.stock` ⇒ hoppa.
+1. `parseSetLinks(html): {url, setRaw}[]` – i `div.categories`, varje
+   `.category-name h4 a` → href (absolut) + text (126 set).
+2. `parseListPage(html): {url, title, priceSek, qty}[]` per `div.product`:
+   första `a[href]` (absolut), `.product-name` text utan inre `<small>`,
+   `.price` → `/(\d+)\s*kr/`, `.stock` → `/(\d+) på/` (saknas ⇒ ej i lager, hoppa).
+   Paginering: `?page=N` tills sidan saknar `div.product`.
+3. `parseTitle(title): {setRaw, name, condition, foil}` –
+   `Magic löskort: <Set>: <Namn>[ (EX)| (Foil)| (Played)…]`. Split på `: `
+   i max 3 delar. Parentes-suffix → `parseCondition` / `/foil/i`; default
+   NM/false; ta bort suffix ur namnet.
+4. Matchning (sätt `printingId`):
+   a. Set-mappning `setRaw → scryfall setCode` i
+      `src/infra/shops/alphaspel-sets.json`. Bygg första versionen från
+      `catalog.sets()` där `setName.toLowerCase() === setRaw.toLowerCase()`;
+      skriv ut omatchade set och fyll i de största för hand
+      (t.ex. `"Magic 2015": "m15"`, `"Origins": "ori"`).
+   b. `catalog.findByNameAndSet(name, setCode)`; exakt 1 träff ⇒ klar.
+   c. 0 eller >1: hämta produktsidan, JSON-LD `"mpn": "10E-139c"` →
+      `findBySetAndNumber("10e","139")` (prova med och utan bokstavssuffix).
+      Cacha i tabell `alphaspel_mpn(url PRIMARY KEY, mpn)` i `mtg.db` (egen
+      `CREATE TABLE IF NOT EXISTS` i adaptern) så det görs en gång per produkt.
+      Titta på 5 mpn med suffix och notera i en kommentar vad suffixet betyder.
+   d. Annars `null`.
 
-Matchning mot `cards`:
-1. `alphaspel_sets.json`: `{ "<set_raw>": "<scryfall set_code>" }`. Bygg den
-   halvautomatiskt: `SELECT DISTINCT set_code, set_name FROM cards` och matcha
-   lowercase set_name == set_raw; skriv ut omatchade set och fyll i för hand.
-2. `SELECT scryfall_id FROM cards WHERE set_code=? AND lower(name)=lower(?)`.
-   Namnet kan vara bara framsidan på dubbelsidiga kort → även `name LIKE ? || ' // %'`.
-3. Fler än en träff (olika tryck) eller noll: hämta produktsidan, ta
-   `"mpn": "10E-139c"` ur JSON-LD → `set_code=lower('10E')`, `collector_number`
-   = `139` (prova med och utan suffix). Cacha i tabell `alphaspel_mpn(url PRIMARY KEY, mpn)`
-   så det bara görs en gång per produkt. Undersök vad suffixet `c` betyder
-   (kolla 5 produkter) och notera i filen.
-4. Ingen träff → rad med `scryfall_id NULL` (syns i matchningsgraden).
+Test `alphaspel.test.ts` + `fixtures/alphaspel-set.html` (listsida trimmad
+till 3 `div.product`, hämta en gång från `/2441-10th-edition/`) +
+`fixtures/alphaspel-product.html` (`<head>` med JSON-LD). Assert:
+parseListPage-fält, parseTitle (ren, `(EX)`, `(Foil)`), mpn-extraktion,
+matchning mot in-memory `SqliteCatalog` seedad med 2 printings (ett unikt,
+ett dubblerat namn som tvingar mpn-vägen – injicera fetch så testet är offline).
 
-Test: `test_alphaspel.py` med `fixture_alphaspel.html` (en listsida, trimmad
-till 3 produkter) → assert namn, pris, qty.
+Verifiera på riktigt (~10 min listsidor + produktsidor för tvetydiga).
+Rapportera rader, matchningsgrad (mål ≥ 85 %), top-20 omatchade `setRaw`.
 
-Klart: `python alphaspel.py` → ≥ 85 % rader med `scryfall_id`. Skriv ut top-20
-omatchade `set_raw` i slutet.
+Commit: `feat(alphaspel): scraper`.

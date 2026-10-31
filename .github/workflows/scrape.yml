@@ -1,0 +1,61 @@
+name: Scrape and publish
+
+on:
+  schedule:
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck && npm test
+      - name: Scryfall prices
+        run: node src/cli.ts refresh
+      # A blocked shop (e.g. Cloudflare) must not stop the others or the publish.
+      - name: Manatorsk
+        continue-on-error: true
+        run: node src/cli.ts scrape manatorsk
+      - name: Alphaspel
+        continue-on-error: true
+        run: node src/cli.ts scrape alphaspel --fresh
+      - name: Dragon's Lair
+        continue-on-error: true
+        run: node src/cli.ts scrape dragonslair
+      - run: node src/cli.ts export docs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scrape-data
+          path: |
+            docs/deals.json
+            mtg.db
+          retention-days: 7
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: scrape
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

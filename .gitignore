@@ -1,5 +1,4 @@
-mtg.db
-*.json
-!alphaspel_sets.json
-!fixture_*.json
-__pycache__/
+node_modules/
+mtg.db*
+default_cards.json*
+docs/

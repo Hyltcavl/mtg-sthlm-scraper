@@ -1,55 +1,36 @@
 # AGENTS.md – kontrakt för alla agenter
 
-Läs `PLAN.md` först. Ponytail-läge: stdlib före beroende, ingen klass utan
-två användare, ingen abstraktion "för senare". Fewest files.
+Läs `PLAN.md` (domänmodell + arkitektur) och koden i `src/domain/` först –
+**den är kontraktet**. Ändra inte `src/domain/*` eller `src/infra/sqlite.ts`
+utan att säga till; alla andra bygger mot dem.
 
-## Stack
-Python 3.12, stdlib only i scrapers (`urllib.request`, `json`, `re`, `sqlite3`,
-`html.parser`). Enda tillåtna pip-paket: `datasette` (webb). Vill du ha ett
-till – skriv varför i PR:en.
+## Regler
+- TypeScript, Node 26, kör `.ts` direkt (`node src/x.ts`). Endast *erasable*
+  syntax: inga `enum`, inga parameter properties (`constructor(private x)`),
+  `import type` för typer, `.ts`-ändelse i relativa imports.
+- Beroenden: `cheerio` finns. Inga nya utan motivering.
+- Ponytail: minsta kod som fungerar. Ingen abstraktion med en användare.
+  Rena funktioner för parsning, I/O i tunna wrappers.
+- DDD: adapters översätter butikens språk → `Listing`/`Printing` vid gränsen.
+  Domänen ser aldrig Shopify-JSON eller HTML.
+- **Tester är obligatoriska.** `node --test`, fil `x.test.ts` bredvid `x.ts`.
+  Parsning testas mot sparade fixtures i `fixtures/`. Inget test går online.
+- Grönt innan commit: `npm run typecheck && npm test`.
+- Nätverk: använd `politeFetch()` från `src/infra/http.ts` (1 req/s, retry).
 
-## Schema (`db.py`, ägs av T0 – ändra inte utan att uppdatera alla)
+## Portar att implementera (`src/domain/ports.ts`)
+- `ShopScraper { shop; scrape(catalog: CardCatalog, options?: ScrapeOptions): Promise<Listing[]> }`
+  – returnerar bara listningar i lager; sätter `printingId` via `catalog`
+  (`byId`, `findByNameAndSet`, `findBySetAndNumber`, `findByName`), `null` om omatchad.
+- `PriceSource { load(): Promise<PricedPrinting[]> }`
 
-```sql
-CREATE TABLE IF NOT EXISTS cards (
-  scryfall_id TEXT PRIMARY KEY, name TEXT, set_code TEXT, set_name TEXT,
-  collector_number TEXT, eur REAL, eur_foil REAL, image_uri TEXT);
-CREATE INDEX IF NOT EXISTS cards_name_set ON cards(name, set_name);
-
-CREATE TABLE IF NOT EXISTS listings (
-  shop TEXT, url TEXT, name TEXT, set_raw TEXT,
-  condition TEXT,            -- NM | EX | GD | PL | PO
-  foil INTEGER,              -- 0/1
-  price_sek REAL, qty INTEGER,  -- qty NULL = okänt men i lager
-  scryfall_id TEXT, scraped_at TEXT,
-  PRIMARY KEY (shop, url, condition, foil));
-```
-
-`db.py` exponerar: `conn()` (öppnar `mtg.db`, kör schemat, returnerar
-connection), `EUR_SEK = 11.0`, `replace_listings(shop, rows)` (raderar
-butikens gamla rader, `executemany` INSERT). Vy `deals` skapas i `conn()`.
-
-## Scraper-kontrakt (T2, T3)
-- Fil `<shop>.py`, körbar: `python manatorsk.py`. Inga argument.
-- Hämtar allt, bygger `rows: list[tuple]` i kolumnordning ovan, anropar
-  `db.replace_listings("manatorsk", rows)`.
-- Bara rader som är i lager.
-- Max **1 request/s** per butik (`time.sleep(1)`), User-Agent
-  `mtg-deal-finder/0.1 (+kontakt@example.com)`. Retry 3× med backoff på 5xx/429.
-- Skriv `print(f"{shop}: {len(rows)} rows, {matched} matched")` sist.
-- Lämna **ett** `test_<shop>.py` med sparad fixture (en JSON-/HTML-sida) som
-  kör parsern och `assert`:ar några fält. Inget pytest-krav – `python test_x.py`.
-
-## Skick-normalisering
-Manatorsk-variant → `Near Mint`=NM, `Excellent`=EX, `Good`=GD,
-`Played`/`Light Played`=PL, `Poor`=PO. Alphaspel: default NM; regex i titeln
-för `(EX|GD|PL|Played|HP|Poor|Signed)` → mappa; `Foil` i titeln → foil=1.
+`parseCondition(raw)` i `src/domain/listing.ts` normaliserar skick.
 
 ## Git
-Inte initierat ännu; T0 kör `git init`. En commit per task, meddelande
-`feat(manatorsk): scraper`. Inga hemligheter, `mtg.db` och `*.json`-bulk i
-`.gitignore`.
+En commit per task: `feat(manatorsk): scraper`. Lägg bara till egna filer
+(`git add <files>`), andra agenter committar samtidigt – retry vid `index.lock`.
+Committa med `git -c user.name=teoeng -c user.email=teoeng@local commit -m "..."`
+och trailer `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`.
 
-## Rapportera tillbaka
-Kort: vad gjordes, matchningsgrad, kända hål. Ingen prosa om alternativ som
-inte byggdes.
+## Rapportera
+Kort: vad byggdes, testantal, uppmätt matchningsgrad/rader, kända hål.

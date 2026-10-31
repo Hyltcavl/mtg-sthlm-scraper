@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MTG Deals</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border-bottom: 1px solid #ddd; padding: .4rem; text-align: left; }
+    th button { font: inherit; font-weight: 700; }
+    img { max-height: 84px; }
+    td { position: relative; }
+    .zoom { cursor: zoom-in; }
+    .big { display: none; position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 192px; max-height: none; z-index: 1; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+    tr:has(.zoom:hover) .big { display: block; }
+    small { color: #666; }
+    .set { display: flex; align-items: center; gap: .3rem; }
+    .set img { height: 1em; width: 1em; max-height: none; }
+    #updated { color: #666; font-size: .85rem; }
+    .filters { display: flex; gap: 1rem; margin: 1rem 0; }
+  </style>
+</head>
+<body>
+  <h1>MTG Deals</h1>
+  <div id="updated"></div>
+  <div class="filters">
+    <label>Butik <select id="shop"><option value="">Alla</option></select></label>
+    <label>Min diff SEK <input id="minDiff" type="number" value="0"></label>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Bild</th>
+        <th scope="col"><button data-sort="name">Namn / Set</button></th>
+        <th scope="col"><button data-sort="priceSek">Pris butik</button></th>
+        <th scope="col"><button data-sort="fairValueSek">MCM pris</button></th>
+        <th scope="col"><button data-sort="diffSek">Diff SEK</button></th>
+        <th scope="col"><button data-sort="diffPct">Diff %</button></th>
+        <th scope="col"><button data-sort="shop">Butik</button></th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <script>
+    let deals = [];
+    let sort = { key: "diffSek", dir: -1 };
+    const rows = document.querySelector("#rows");
+    const shop = document.querySelector("#shop");
+    const minDiff = document.querySelector("#minDiff");
+    const num = new Set(["priceSek", "fairValueSek", "diffSek", "diffPct"]);
+
+    function cell(text) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      return td;
+    }
+    function link(href, text) {
+      const a = document.createElement("a");
+      a.href = href;
+      a.textContent = text;
+      return a;
+    }
+    function render() {
+      const filtered = deals
+        .filter(d => !shop.value || d.shop === shop.value)
+        .filter(d => d.diffSek >= Number(minDiff.value || 0))
+        .sort((a, b) => {
+          const av = a[sort.key], bv = b[sort.key];
+          return (num.has(sort.key) ? av - bv : String(av).localeCompare(String(bv))) * sort.dir;
+        });
+      rows.replaceChildren(...filtered.map(d => {
+        const tr = document.createElement("tr");
+        const imgTd = document.createElement("td");
+        imgTd.className = "zoom";
+        if (d.imageUri) {
+          const img = document.createElement("img");
+          img.src = d.imageUri;
+          img.alt = "";
+          img.loading = "lazy";
+          img.width = 60;
+          const big = img.cloneNode();
+          big.className = "big";
+          big.removeAttribute("width");
+          imgTd.append(img, big);
+        }
+        const nameTd = cell(d.name);
+        nameTd.className = "zoom";
+        const cond = document.createElement("small");
+        cond.textContent = " " + d.condition + (d.foil ? " foil" : "");
+        nameTd.append(cond);
+        const setLine = document.createElement("div");
+        setLine.className = "set";
+        const icon = document.createElement("img");
+        icon.src = `https://svgs.scryfall.io/sets/${d.setCode}.svg`;
+        icon.alt = "";
+        icon.loading = "lazy";
+        icon.onerror = () => icon.remove();
+        const setName = document.createElement("small");
+        setName.textContent = d.setName;
+        setLine.append(icon, setName);
+        nameTd.append(setLine);
+        const mcmTd = document.createElement("td");
+        mcmTd.append(link(d.cardmarketUrl, d.fairValueSek));
+        const shopTd = document.createElement("td");
+        shopTd.append(link(d.url, d.shop));
+        tr.append(imgTd, nameTd, cell(d.priceSek), mcmTd, cell(d.diffSek),
+          cell(Math.round(d.diffPct * 100) + "%"), shopTd);
+        return tr;
+      }));
+    }
+    document.querySelectorAll("th button").forEach(b => b.addEventListener("click", () => {
+      sort = { key: b.dataset.sort, dir: sort.key === b.dataset.sort ? -sort.dir : 1 };
+      render();
+    }));
+    shop.addEventListener("change", render);
+    minDiff.addEventListener("input", render);
+    fetch("deals.json").then(r => r.json()).then(data => {
+      deals = data;
+      fetch("updated.txt").then(r => r.ok ? r.text() : "").then(t => document.querySelector("#updated").textContent = t ? "Uppdaterad " + t : "").catch(() => {});
+      [...new Set(deals.map(d => d.shop))].sort().forEach(s => shop.append(new Option(s, s)));
+      render();
+    });
+  </script>
+</body>
+</html>

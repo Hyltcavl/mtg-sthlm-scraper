@@ -1,0 +1,154 @@
+{
+  "products": [
+    {
+      "title": "Narset, Parter of Veils",
+      "handle": "8c39f9b4-02b9-4d44-b8d6-4fd02ebbb0c5",
+      "product_type": "Single",
+      "tags": [
+        "Basic Land_False",
+        "Border Color_Black",
+        "Border Year_2015",
+        "Border_Modern",
+        "Color_Blue",
+        "Color_Mono",
+        "EDHREC Rank_707",
+        "Foil_Regular",
+        "Frame Type_2015",
+        "Full Art_False",
+        "Lang_English",
+        "Legality_Commander",
+        "Legality_Legacy",
+        "Legality_Modern",
+        "Legality_Pioneer",
+        "Not Color_Black",
+        "Not Color_Colorless",
+        "Not Color_Green",
+        "Not Color_Multi",
+        "Not Color_Red",
+        "Not Color_White",
+        "Rarity_Uncommon",
+        "Reserved List_False",
+        "Scryfall ID_8c39f9b4-02b9-4d44-b8d6-4fd02ebbb0c5",
+        "Set_War Of The Spark",
+        "Signed_Regular",
+        "Snow Land_False",
+        "Type_Legendary",
+        "Type_Planeswalker"
+      ],
+      "variants": [
+        {
+          "title": "Near Mint",
+          "price": "11.00",
+          "available": false,
+          "sku": "WZSI-C-WAR-U-061-EN-NM"
+        },
+        {
+          "title": "Excellent",
+          "price": "10.00",
+          "available": true,
+          "sku": "WZSI-C-WAR-U-061-EN-EX"
+        },
+        {
+          "title": "Lightly Played",
+          "price": "8.00",
+          "available": false,
+          "sku": "WZSI-C-WAR-U-061-EN-LP"
+        }
+      ]
+    },
+    {
+      "title": "Sol Ring",
+      "handle": "2d47121d-8b90-4d28-9ffa-0a640b9dd611",
+      "product_type": "Single",
+      "tags": [
+        "Basic Land_False",
+        "Border Color_Black",
+        "Border Year_2015",
+        "Border_Modern",
+        "Color_Colorless",
+        "EDHREC Rank_1",
+        "Foil_Regular",
+        "Frame Type_2015",
+        "Full Art_False",
+        "Lang_English",
+        "Legality_Commander",
+        "Not Color_Black",
+        "Not Color_Blue",
+        "Not Color_Green",
+        "Not Color_Multi",
+        "Not Color_Red",
+        "Not Color_White",
+        "Rarity_Uncommon",
+        "Reserved List_False",
+        "Scryfall ID_2d47121d-8b90-4d28-9ffa-0a640b9dd611",
+        "Set_The Lost Caverns Of Ixalan Commander",
+        "Signed_Regular",
+        "Snow Land_False",
+        "Type_Artifact"
+      ],
+      "variants": [
+        {
+          "title": "Near Mint",
+          "price": "25.00",
+          "available": false,
+          "sku": "WZSI-C-LCC-A-313-EN-NM"
+        },
+        {
+          "title": "Excellent",
+          "price": "27.00",
+          "available": false,
+          "sku": "WZSI-C-LCC-A-313-EN-EX"
+        }
+      ]
+    },
+    {
+      "title": "Bastion of Remembrance",
+      "handle": "2dd354dd-939e-4b1a-8ed6-fe89a7fd64bf",
+      "product_type": "Single",
+      "tags": [
+        "Basic Land_False",
+        "Border Color_Black",
+        "Border Year_2015",
+        "Border_Modern",
+        "Color_Black",
+        "Color_Mono",
+        "EDHREC Rank_350",
+        "Foil_Regular",
+        "Frame Type_2015",
+        "Full Art_False",
+        "Lang_English",
+        "Legality_Commander",
+        "Legality_Legacy",
+        "Legality_Modern",
+        "Legality_Pioneer",
+        "Not Color_Blue",
+        "Not Color_Colorless",
+        "Not Color_Green",
+        "Not Color_Multi",
+        "Not Color_Red",
+        "Not Color_White",
+        "Rarity_Uncommon",
+        "Reserved List_False",
+        "Scryfall ID_2dd354dd-939e-4b1a-8ed6-fe89a7fd64bf",
+        "Set_Ikoria: Lair Of Behemoths",
+        "Signed_Regular",
+        "Snow Land_False",
+        "Type_Enchantment"
+      ],
+      "variants": [
+        {
+          "title": "Near Mint",
+          "price": "10.00",
+          "available": false,
+          "sku": "WZSI-C-IKO-B-073-EN-NM"
+        },
+        {
+          "title": "Excellent",
+          "price": "9.00",
+          "available": false,
+          "sku": "WZSI-C-IKO-B-073-EN-EX"
+        }
+      ]
+    }
+  ]
+}
