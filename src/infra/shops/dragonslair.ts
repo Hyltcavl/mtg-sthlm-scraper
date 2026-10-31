@@ -1,6 +1,8 @@
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { dirname } from "node:path";
 import * as cheerio from "cheerio";
 import type { Condition, Listing } from "../../domain/listing.ts";
-import type { CardCatalog, ShopScraper } from "../../domain/ports.ts";
+import type { CardCatalog, ScrapeOptions, ShopScraper } from "../../domain/ports.ts";
 import { politeFetch } from "../http.ts";
 
 const BASE = "https://astraeus.dragonslair.se";
@@ -100,26 +102,84 @@ export function toListings(rows: Row[], catalog: CardCatalog, listUrl = LIST): L
   });
 }
 
+export type DragonslairOptions = {
+  maxPages?: number; // cap pages per CMC (testing)
+  budget?: number; // max HTTP requests this run; progress is kept, run again to continue
+  delayMs?: number; // minimum gap between requests
+  progressFile?: string;
+};
+
+/** Thrown when the scrape stopped early (budget, block). Progress is saved; run again to resume. */
+export class IncompleteScrape extends Error {}
+
+type Chunk = { cmc: number; page: number; last: number; rows: Row[] };
+
 export class DragonslairScraper implements ShopScraper {
   readonly shop = "dragonslair";
-  private get = politeFetch(1000);
-  private maxPages: number;
+  private opts: Required<DragonslairOptions>;
+  private get: ReturnType<typeof politeFetch>;
+  private requests = 0;
 
-  constructor(maxPages = Infinity) { this.maxPages = maxPages; }
-
-  private async page(cmc: number, n: number): Promise<string> {
-    return (await this.get(`${LIST}/cmc-${cmc}/${n}`)).text();
+  constructor(opts: DragonslairOptions = {}) {
+    this.opts = { maxPages: Infinity, budget: Infinity, delayMs: 2000, progressFile: "data/dragonslair-progress.jsonl", ...Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== undefined)) };
+    this.get = politeFetch(this.opts.delayMs);
   }
 
-  async scrape(catalog: CardCatalog): Promise<Listing[]> {
-    const listings: Listing[] = [];
-    for (const cmc of CMCS) {
-      const first = parseListPage(await this.page(cmc, 1));
-      listings.push(...toListings(first.rows, catalog));
-      for (let n = 2; n <= Math.min(first.lastPage, this.maxPages); n++)
-        listings.push(...toListings(parseListPage(await this.page(cmc, n)).rows, catalog));
+  // One JSON line per fetched page; append-only so an abort never loses completed pages.
+  private load(): Chunk[] {
+    if (!existsSync(this.opts.progressFile)) return [];
+    return readFileSync(this.opts.progressFile, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Chunk);
+  }
+
+  private async fetchPage(cmc: number, n: number): Promise<string> {
+    if (this.requests >= this.opts.budget) throw new IncompleteScrape(`request budget ${this.opts.budget} reached`);
+    this.requests++;
+    try {
+      return await (await this.get(`${LIST}/cmc-${cmc}/${n}`)).text();
+    } catch (e) {
+      throw new IncompleteScrape(`stopped at cmc-${cmc} page ${n}: ${e instanceof Error ? e.message : e}`);
     }
-    console.log(`dragonslair: ${listings.length} listings, ${listings.filter((l) => l.printingId).length} matched`);
+  }
+
+  async scrape(catalog: CardCatalog, options?: ScrapeOptions): Promise<Listing[]> {
+    const file = this.opts.progressFile;
+    if (options?.fresh) rmSync(file, { force: true });
+    mkdirSync(dirname(file), { recursive: true });
+    const chunks = this.load();
+    const done = new Map<number, Set<number>>();
+    const last = new Map<number, number>();
+    for (const c of chunks) {
+      (done.get(c.cmc) ?? done.set(c.cmc, new Set()).get(c.cmc)!).add(c.page);
+      last.set(c.cmc, c.last);
+    }
+    console.log(`dragonslair: resuming with ${chunks.length} pages already saved (${file})`);
+
+    try {
+      for (const [i, cmc] of CMCS.entries()) {
+        const have = done.get(cmc) ?? new Set<number>();
+        let lastPage = last.get(cmc) ?? 0;
+        for (let n = 1; n === 1 || n <= Math.min(lastPage, this.opts.maxPages); n++) {
+          if (have.has(n)) continue;
+          const { rows, lastPage: lp } = parseListPage(await this.fetchPage(cmc, n));
+          lastPage = lp;
+          const chunk: Chunk = { cmc, page: n, last: lp, rows };
+          appendFileSync(file, JSON.stringify(chunk) + "\n");
+          chunks.push(chunk);
+          console.log(`dragonslair: cmc ${cmc} (${i + 1}/${CMCS.length}) page ${n}/${Math.min(lp, this.opts.maxPages)}, ${rows.length} rows, ${this.requests} requests this run`);
+        }
+      }
+    } catch (e) {
+      if (e instanceof IncompleteScrape) {
+        console.log(`dragonslair: INCOMPLETE - ${e.message}. ${chunks.length} pages saved; run the same command to continue.`);
+      }
+      throw e;
+    }
+
+    const byId = new Map<string, Row>(); // inventory shifts between requests, so a row can appear twice
+    for (const c of chunks) for (const r of c.rows) byId.set(r.id, r);
+    const listings = toListings([...byId.values()], catalog);
+    rmSync(file, { force: true });
+    console.log(`dragonslair: done, ${listings.length} listings, ${listings.filter((l) => l.printingId).length} matched`);
     return listings;
   }
 }

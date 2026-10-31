@@ -49,3 +49,9 @@ Tests are offline: parsers run against `fixtures/`, SQLite uses `:memory:`. See 
 
 `.github/workflows/scrape.yml` runs daily (and manually): refresh, scrape all shops, export `docs/`, deploy to GitHub Pages.
 Enable once: repo Settings, Pages, Source: GitHub Actions. `node src/cli.ts export [dir]` writes index.html, deals.json and updated.txt (preview with `npx serve docs`).
+
+Dragon's Lair blocks GitHub runner IPs (Cloudflare 403), so the workflow falls back to `data/dragonslair.json`. Refresh it from a normal machine and commit it:
+
+    node src/cli.ts scrape dragonslair --snapshot data/dragonslair.json
+
+The full scrape is ~1000+ requests, so go easy on the server: default gap is 2 s (+jitter), requests that take over 120 s fail the run, 429/5xx back off exponentially and slow the pace, a 403 stops immediately. Progress is saved per page in `data/dragonslair-progress.jsonl`, so an aborted run resumes where it stopped. Do it in batches with `--budget N` (max requests per run), repeat the same command until it prints `done`; `--fresh` starts over, `--delay MS` changes the gap. Listings are only replaced once the whole scrape is complete.

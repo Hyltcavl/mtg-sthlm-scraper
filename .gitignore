@@ -2,3 +2,4 @@ node_modules/
 mtg.db*
 default_cards.json*
 docs/
+data/dragonslair-progress.jsonl

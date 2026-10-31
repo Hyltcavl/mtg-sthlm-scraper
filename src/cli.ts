@@ -7,7 +7,9 @@ import { startServer } from "./web/server.ts";
 import { refreshCatalog } from "./app/refreshCatalog.ts";
 import { scrapeShop } from "./app/scrapeShop.ts";
 import { findDeals } from "./app/findDeals.ts";
-import { mkdirSync, copyFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, copyFileSync, writeFileSync, readFileSync } from "node:fs";
+import { dirname } from "node:path";
+import type { Listing } from "./domain/listing.ts";
 import { toRow } from "./web/server.ts";
 import type { ShopScraper } from "./domain/ports.ts";
 
@@ -26,15 +28,29 @@ try {
     const workers = args.includes("--workers") ? Number(workersArg) : undefined;
     if (workers !== undefined && (!Number.isInteger(workers) || workers <= 0)) usage();
     if (target !== "manatorsk" && target !== "alphaspel" && target !== "dragonslair" && target !== "all") usage();
-    const pages = args.includes("--pages") ? Number(args[args.indexOf("--pages") + 1]) : undefined;
+    const num = (flag: string) => (args.includes(flag) ? Number(args[args.indexOf(flag) + 1]) : undefined);
+    const dlOpts = { maxPages: num("--pages"), budget: num("--budget"), delayMs: num("--delay") };
     const db = openDb();
     const catalog = new SqliteCatalog(db);
     const repo = new SqliteListings(db);
-    const scrapers: ShopScraper[] = [new ManatorskScraper(), new AlphaspelScraper(db), new DragonslairScraper(pages)];
+    const scrapers: ShopScraper[] = [new ManatorskScraper(), new AlphaspelScraper(db), new DragonslairScraper(dlOpts)];
     for (const scraper of scrapers.filter((s) => target === "all" || s.shop === target)) {
       const count = await scrapeShop(scraper, catalog, repo, { fresh, workers });
       console.log(`scrape ${scraper.shop}: saved ${count} listings`);
+      const snapshot = args.includes("--snapshot") ? args[args.indexOf("--snapshot") + 1] : undefined;
+      if (snapshot && scraper.shop === "dragonslair") {
+        mkdirSync(dirname(snapshot), { recursive: true });
+        writeFileSync(snapshot, JSON.stringify(repo.all().filter((l) => l.shop === "dragonslair")));
+        console.log(`snapshot: ${snapshot}`);
+      }
     }
+  } else if (command === "load") {
+    // Import a committed snapshot (Cloudflare blocks the dragonslair scrape from GitHub runners)
+    const file = args[1];
+    if (!file) usage();
+    const listings = JSON.parse(readFileSync(file, "utf8")) as Listing[];
+    new SqliteListings(openDb()).replaceForShop("dragonslair", listings);
+    console.log(`load: ${listings.length} dragonslair listings from ${file}`);
   } else if (command === "export") {
     const dir = args[1] ?? "docs";
     const db = openDb();
@@ -61,6 +77,6 @@ try {
 }
 
 function usage(): never {
-  console.error("usage: node src/cli.ts refresh | scrape <manatorsk|alphaspel|dragonslair|all> [--fresh] [--workers N] [--pages N (dragonslair)] | export [dir] | serve [port]");
+  console.error("usage: node src/cli.ts refresh | scrape <manatorsk|alphaspel|dragonslair|all> [--fresh] [--workers N] [--pages N] [--budget REQUESTS] [--delay MS] [--snapshot file (dragonslair)] | load <file> | export [dir] | serve [port]");
   process.exit(1);
 }
