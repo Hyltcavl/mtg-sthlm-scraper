@@ -2,7 +2,7 @@ name: Scrape and publish
 
 on:
   schedule:
-    - cron: "30 5 * * *"
+    - cron: "30 5 */3 * *" # every third day-of-month (1,4,7,...)
   workflow_dispatch:
 
 permissions:
@@ -35,11 +35,11 @@ jobs:
       - name: Alphaspel
         continue-on-error: true
         run: node src/cli.ts scrape alphaspel --fresh
-      # GitHub runner IPs are blocked by Cloudflare; fall back to the snapshot scraped locally
-      # (node src/cli.ts scrape dragonslair --snapshot data/dragonslair.json, then commit).
-      - name: Dragon's Lair
+      # GitHub runner IPs are blocked by Cloudflare, so Dragon's Lair is never scraped here.
+      # A machine with a Swedish IP refreshes data/dragonslair.json (scripts/scrape-dragonslair.sh).
+      - name: Dragon's Lair (committed snapshot)
         continue-on-error: true
-        run: node src/cli.ts scrape dragonslair || node src/cli.ts load data/dragonslair.json
+        run: node src/cli.ts load data/dragonslair.json
       - run: node src/cli.ts export docs
       - uses: actions/upload-artifact@v4
         with:

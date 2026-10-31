@@ -42,20 +42,28 @@ Tests are offline: parsers run against `fixtures/`, SQLite uses `:memory:`. See 
 ## Cron
 
 ```cron
-0 4 * * * cd /home/teoeng/mtg-scraper && node src/cli.ts refresh && node src/cli.ts scrape all
+0 4 */3 * * cd /home/teoeng/mtg-scraper && node src/cli.ts refresh && node src/cli.ts scrape manatorsk && node src/cli.ts scrape alphaspel
 ```
 
 ## Publish (GitHub Pages)
 
-`.github/workflows/scrape.yml` runs daily (and manually): refresh, scrape all shops, export `docs/`, deploy to GitHub Pages.
+`.github/workflows/scrape.yml` runs every third day (and manually): refresh, scrape Manatorsk and Alphaspel, load the Dragon's Lair snapshot, export `docs/`, deploy to GitHub Pages.
 Enable once: repo Settings, Pages, Source: GitHub Actions. `node src/cli.ts export [dir]` writes index.html, deals.json and updated.txt (preview with `npx serve docs`).
 
-Dragon's Lair blocks GitHub runner IPs (Cloudflare 403), so the workflow falls back to `data/dragonslair.json`. Refresh it from a normal machine and commit it:
+Dragon's Lair blocks GitHub runner IPs (Cloudflare 403), so the workflow never scrapes it: it loads the committed `data/dragonslair.json`, which a machine with a Swedish IP keeps fresh (see below). Manual one-off:
 
     node src/cli.ts scrape dragonslair --snapshot data/dragonslair.json
 
 The full scrape is ~1000+ requests, so go easy on the server: default gap is 2 s (+jitter), requests that take over 120 s fail the run, 429/5xx back off exponentially and slow the pace, a 403 stops immediately. Progress is saved per page in `data/dragonslair-progress.jsonl`, so an aborted run resumes where it stopped. Do it in batches with `--budget N` (max requests per run), repeat the same command until it prints `done`; `--fresh` starts over, `--delay MS` changes the gap. Listings are only replaced once the whole scrape is complete.
 
-To automate this on a home machine (Swedish IP), cron `scripts/scrape-dragonslair.sh`: each run does one batch (`BUDGET`, default 300 requests), and when the scrape completes it commits and pushes `data/dragonslair.json`. Example, hourly:
+### Dragon's Lair cron on a home machine
 
-    0 * * * * /home/teoeng/mtg-scraper/scripts/scrape-dragonslair.sh >> /tmp/dl-scrape.log 2>&1
+Setup on the other computer (once):
+
+1. Install Node 26 and git; `git clone https://github.com/Hyltcavl/mtg-sthlm-scraper.git && cd mtg-sthlm-scraper && npm ci`.
+2. Make sure `git push` works non-interactively there (SSH key or credential helper / token with write access).
+3. `crontab -e` and add (hourly check):
+
+       0 * * * * /path/to/mtg-sthlm-scraper/scripts/scrape-dragonslair.sh >> /tmp/dl-scrape.log 2>&1
+
+What `scripts/scrape-dragonslair.sh` does each run: pulls; exits right away if the last snapshot commit is younger than 3 days (`MAX_AGE_DAYS`); otherwise runs one batch (`BUDGET`, default 300 requests, ~10-15 min) and resumes from `data/dragonslair-progress.jsonl` on the next run. When the whole scrape is complete it commits and pushes `data/dragonslair.json`; the next Pages run (every third day) publishes it. Check `/tmp/dl-scrape.log` for progress.
