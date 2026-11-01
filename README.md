@@ -23,13 +23,13 @@ node src/cli.ts serve 3000
 
 `refresh` loads Scryfall bulk data into `mtg.db`. `scrape` replaces listings for the selected shop. `serve` opens the web UI and `/api/deals`.
 
-Alphaspel checkpoints per set: Ctrl-C and rerun to resume; `--fresh` restarts. `--workers N` runs N polite clients (1 req/s each, default 3). Product pages are only fetched for cards that could pass the deal policy; cheaper ambiguous cards stay unmatched. A full run takes ~20 min.
+Alphaspel checkpoints per set: Ctrl-C and rerun to resume; `--fresh` restarts. `--workers N` runs N polite clients (1 req/s each, default 3). Each set is fetched page by page, using the last page linked on page 1 (no probe past the end). Product pages are only fetched for cards that could pass the deal policy; with `--snapshot data/alphaspel.json` the previous snapshot is read first, and cards already resolved to a printing there are not fetched again. After a scrape the CLI prints `http: attempts=… retries=… throttled=… timeouts=… errors=…`; a high `throttled` count explains a slow run (the client backs off on 429/5xx and eases back after successes). A cold full run (~312 category pages, ~1,900 requests) took over an hour on the first try, far more than the nominal 3 req/s; check `throttled` before tuning.
 
 ## Web UI
 
-Columns: image, name (condition/foil), set, price, fair value, diff SEK, diff %, shop, links. Click a header to sort; filter by shop and minimum diff. Hover the image or name to see a larger card image centred on the page.
+Columns: image, name (condition/foil), set, price, fair value, diff SEK, diff %, shop, links. Click a header to sort; search by card name; filter by shop and minimum diff. Hover the image or name to see a larger card image centred on the page.
 
-Fair value = Cardmarket trend (EUR) × 11 × condition factor (NM 1, EX .9, GD .75, PL .6, PO .4). A deal is priced at or under fair value (diff ≥ 0) and fair ≥ 20 SEK (`DEFAULT_POLICY` in `src/domain/valuation.ts`).
+Fair value = Cardmarket trend (EUR) × 11 × condition factor (NM 1, EX .9, GD .75, PL .6, PO .4). A deal is priced at or under fair value (diff ≥ 0) and fair ≥ 20 SEK (`DEFAULT_POLICY` in `src/domain/valuation.ts`). The page has a card-name search, a shop filter, a minimum-diff filter and a per-shop "last scraped" line.
 
 ## Develop
 
@@ -47,10 +47,16 @@ Tests are offline: parsers run against `fixtures/`, SQLite uses `:memory:`. See 
 
 ## Publish (GitHub Pages)
 
-`.github/workflows/scrape.yml` runs every third day (and manually): refresh, scrape Manatorsk and Alphaspel, load the Dragon's Lair snapshot, export `docs/`, deploy to GitHub Pages.
+Scraping and publishing are separate, so changing the page or the deal logic never re-scrapes:
+
+- `.github/workflows/scrape.yml` (every third day, and manually): scrape Manatorsk and Alphaspel, commit `data/<shop>.json` + `data/<shop>.meta.json` snapshots, then call `publish.yml`.
+- `.github/workflows/publish.yml` (every push to `main` except docs, after each scrape, manually): refresh Scryfall prices, `load` the three snapshots, export `docs/`, deploy to GitHub Pages. It never scrapes.
+- Dragon's Lair is scraped on a home machine (see below) and pushed as `data/dragonslair.json`; that push triggers `publish.yml`.
+
+Snapshot commands: `node src/cli.ts scrape <shop> --snapshot data/<shop>.json` writes one, `node src/cli.ts load data/<shop>.json` reads one (the shop is the file name).
 Enable once: repo Settings, Pages, Source: GitHub Actions. `node src/cli.ts export [dir]` writes index.html, deals.json, shops.json (last scrape per shop, shown at the top of the page) and updated.txt (preview with `npx serve docs`).
 
-Dragon's Lair blocks GitHub runner IPs (Cloudflare 403), so the workflow never scrapes it: it loads the committed `data/dragonslair.json` (its scrape time comes from `data/dragonslair.meta.json`), which a machine with a Swedish IP keeps fresh (see below). Manual one-off:
+Dragon's Lair blocks GitHub runner IPs (Cloudflare 403), so the workflows never scrape it: publish loads the committed `data/dragonslair.json` (its scrape time comes from `data/dragonslair.meta.json`), which a machine with a Swedish IP keeps fresh (see below). Manual one-off:
 
     node src/cli.ts scrape dragonslair --snapshot data/dragonslair.json
 

@@ -65,3 +65,17 @@ test("serves api deals", async () => {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
 });
+
+test("index page has the card-name search and the per-shop scrape line", async () => {
+  const server = startServer(() => [], 0);
+  try {
+    await once(server, "listening");
+    const { port } = server.address() as AddressInfo;
+    const html = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+    assert.match(html, /id="q"[^>]*type="search"|type="search"[^>]*id="q"/);
+    assert.match(html, /id="scraped"/);
+    assert.match(html, /shops\.json/);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
+});

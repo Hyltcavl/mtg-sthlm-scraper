@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { httpStats, politeFetch } from "./http.ts";
+import { httpStats, nextInterval, politeFetch } from "./http.ts";
 
 const reset = () => Object.assign(httpStats, { attempts: 0, retries: 0, throttled: 0, timeouts: 0, errors: 0 });
 
@@ -39,4 +39,11 @@ test("httpStats counts a timeout", async () => {
     await assert.rejects(politeFetch(0, 0, 100)(url), /timeout/);
   });
   assert.deepEqual(httpStats, { attempts: 1, retries: 0, throttled: 0, timeouts: 1, errors: 0 });
+});
+
+test("nextInterval doubles on throttle (max 30 s) and eases back to the base", () => {
+  assert.equal(nextInterval(1000, 1000, true), 2000);
+  assert.equal(nextInterval(1000, 20_000, true), 30_000);
+  assert.equal(nextInterval(1000, 2000, false), 1800);
+  assert.equal(nextInterval(1000, 1050, false), 1000);
 });

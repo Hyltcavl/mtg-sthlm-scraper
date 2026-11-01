@@ -1,67 +1,59 @@
-name: Scrape and publish
+name: Scrape
 
+# Scrapes Manatorsk and Alphaspel, commits the results as data/<shop>.json snapshots and then
+# publishes. Dragon's Lair is not scraped here (Cloudflare blocks GitHub runner IPs); the home cron
+# pushes data/dragonslair.json, which triggers publish.yml on its own.
 on:
   schedule:
     - cron: "30 5 */3 * *" # every third day-of-month (1,4,7,...)
-  # Publish as soon as the home cron pushes a fresh Dragon's Lair snapshot
-  push:
-    branches: [main]
-    paths: ["data/dragonslair.json"]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
 concurrency:
-  group: pages
+  group: scrape
   cancel-in-progress: false
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 26
           cache: npm
       - run: npm ci
       - run: npm run typecheck && npm test
-      - name: Scryfall prices
+      - name: Scryfall catalog
         run: node src/cli.ts refresh
-      # A blocked shop (e.g. Cloudflare) must not stop the others or the publish.
+      # A blocked shop must not stop the other: its old snapshot stays and the page marks it stale.
       - name: Manatorsk
         continue-on-error: true
-        run: node src/cli.ts scrape manatorsk
+        run: node src/cli.ts scrape manatorsk --snapshot data/manatorsk.json
       - name: Alphaspel
         continue-on-error: true
-        run: node src/cli.ts scrape alphaspel --fresh
-      # GitHub runner IPs are blocked by Cloudflare, so Dragon's Lair is never scraped here.
-      # A machine with a Swedish IP refreshes data/dragonslair.json (scripts/scrape-dragonslair.sh).
-      - name: Dragon's Lair (committed snapshot)
-        continue-on-error: true
-        run: node src/cli.ts load data/dragonslair.json
-      - run: node src/cli.ts export docs
-      - uses: actions/upload-artifact@v4
-        with:
-          name: scrape-data
-          path: |
-            docs/deals.json
-            mtg.db
-          retention-days: 7
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs
+        run: node src/cli.ts scrape alphaspel --fresh --snapshot data/alphaspel.json
+      # Pushes made with GITHUB_TOKEN do not trigger other workflows, so publish is called below.
+      - name: Commit snapshots
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/manatorsk.json data/manatorsk.meta.json data/alphaspel.json data/alphaspel.meta.json
+          if git diff --cached --quiet; then echo "no snapshot changes"; else
+            git commit -m "data: manatorsk/alphaspel snapshots"
+            git pull --rebase
+            git push
+          fi
 
-  deploy:
+  publish:
     needs: scrape
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/publish.yml

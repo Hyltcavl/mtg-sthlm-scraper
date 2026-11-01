@@ -1,0 +1,57 @@
+name: Publish
+
+# Builds the static site from the committed shop snapshots (data/<shop>.json) - no scraping here.
+# Runs on every code push, when the home cron pushes a new Dragon's Lair snapshot, manually,
+# and after the scheduled scrape (scrape.yml calls it).
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "tasks/**"]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # explicit ref: when called from scrape.yml the snapshots were pushed after the triggering commit
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck && npm test
+      - name: Scryfall prices
+        run: node src/cli.ts refresh
+      - name: Load shop snapshots
+        run: |
+          for f in data/manatorsk.json data/alphaspel.json data/dragonslair.json; do
+            if [ -f "$f" ]; then node src/cli.ts load "$f"; else echo "missing $f"; fi
+          done
+      - run: node src/cli.ts export docs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

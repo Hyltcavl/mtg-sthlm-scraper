@@ -44,6 +44,13 @@ export function parseListPage(html: string): RawListItem[] {
   });
 }
 
+/** Highest page number linked from the pagination (page 1 already links the last page). 1 if none. */
+export function parseLastPage(html: string): number {
+  const $ = cheerio.load(html);
+  const pages = $("ul.pagination a[href]").toArray().map((a) => Number(/[?&]page=(\d+)/.exec($(a).attr("href") ?? "")?.[1]));
+  return Math.max(1, ...pages.filter(Number.isFinite));
+}
+
 export function parseTitle(title: string): ParsedTitle {
   const [, setRaw = "", ...nameParts] = title.split(": ");
   let name = nameParts.join(": ").trim();
@@ -80,9 +87,12 @@ export class AlphaspelScraper implements ShopScraper {
   private db: DatabaseSync;
   private getFactory: () => Fetcher;
   private staticMap: Record<string, string>;
+  private known: Map<string, string>;
 
-  constructor(db: DatabaseSync, get?: Fetcher | (() => Fetcher)) {
+  /** `known`: product url -> printing id from the previous snapshot; saves the product-page fetch for cards seen before. */
+  constructor(db: DatabaseSync, get?: Fetcher | (() => Fetcher), known = new Map<string, string>()) {
     this.db = db;
+    this.known = known;
     this.getFactory = get ? normalizeFetcher(get) : () => politeFetch(1000);
     this.staticMap = JSON.parse(readFileSync(SETS_FILE, "utf8")) as Record<string, string>;
     this.db.exec(`
@@ -171,10 +181,12 @@ export class AlphaspelScraper implements ShopScraper {
 
   private async scrapeSet(setLink: SetLink, setMap: Record<string, string>, catalog: CardCatalog, get: Fetcher) {
     const listings: Listing[] = [];
-    for (let page = 1; ; page++) {
+    let last = 1; // page 1 links the last page, so no extra request is needed to find the end
+    for (let page = 1; page <= last; page++) {
       const html = await this.optionalText(pageUrl(setLink.url, page), get);
       if (html == null) break;
       if (!cheerio.load(html)("div.product").length) break;
+      last = Math.max(last, parseLastPage(html));
       for (const item of parseListPage(html)) listings.push(await this.toListing(item, setMap, catalog, get));
     }
     return listings;
@@ -226,6 +238,8 @@ export class AlphaspelScraper implements ShopScraper {
   private async resolve(listing: Listing, setCode: string | undefined, catalog: CardCatalog, get: Fetcher) {
     const byName = setCode ? single(catalog.findByNameAndSet(listing.name, setCode)) : null;
     if (byName) return byName.id;
+    const seen = this.known.get(listing.url);
+    if (seen) return seen;
     // ponytail: bulk that can never pass the deal policy is left unidentified; saves ~90 % of requests.
     const worthIt = catalog.findByName(listing.name).some((p) => evaluateDeal(listing, p.printing, p.price));
     return worthIt ? (await this.matchByMpn(listing.url, catalog, get))?.id ?? null : null;

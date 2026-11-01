@@ -3,10 +3,15 @@ const UA = "mtg-deal-finder/0.1 (+kontakt@example.com)";
 /** Process-wide request counters; scrapers print them so cron wrappers can report a run. */
 export const httpStats = { attempts: 0, retries: 0, throttled: 0, timeouts: 0, errors: 0 };
 
+/** Gap before the next request: doubles on a throttle (max 30 s), eases back 10 % per success down to the base. */
+export function nextInterval(base: number, current: number, throttled: boolean): number {
+  return throttled ? Math.min(current * 2, 30_000) : Math.max(base, current * 0.9);
+}
+
 /**
  * Polite fetch: one request per interval per client. Retries 429/5xx/network errors with exponential
- * backoff + jitter (honours Retry-After) and permanently doubles the interval after each throttle
- * (max 30 s). A 403 or a response slower than `timeoutMs` fails immediately - no retry.
+ * backoff + jitter (honours Retry-After) and doubles the interval after each throttle
+ * (max 30 s, easing back after successes). A 403 or a response slower than `timeoutMs` fails immediately - no retry.
  */
 export function politeFetch(minIntervalMs = 1000, retries = 3, timeoutMs = 120_000) {
   let next = 0;
@@ -24,11 +29,14 @@ export function politeFetch(minIntervalMs = 1000, retries = 3, timeoutMs = 120_0
           headers: { "User-Agent": UA, Accept: "application/json, text/html", ...headers },
           signal: AbortSignal.timeout(timeoutMs),
         });
-        if (res.ok) return res;
+        if (res.ok) {
+          interval = nextInterval(minIntervalMs, interval, false);
+          return res;
+        }
         if (res.status === 429 || res.status >= 500) {
           httpStats.throttled++;
           retryAfterMs = Number(res.headers.get("retry-after")) * 1000 || 0;
-          interval = Math.min(interval * 2, 30_000);
+          interval = nextInterval(minIntervalMs, interval, true);
         }
         if ((res.status === 429 || res.status >= 500) && attempt < retries) {
           httpStats.retries++;

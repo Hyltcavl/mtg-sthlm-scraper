@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { openDb, SqliteCatalog } from "../sqlite.ts";
-import { AlphaspelScraper, parseListPage, parseMpn, parseSetLinks, parseTitle } from "./alphaspel.ts";
+import { AlphaspelScraper, parseLastPage, parseListPage, parseMpn, parseSetLinks, parseTitle } from "./alphaspel.ts";
 import type { PricedPrinting } from "../../domain/ports.ts";
 
 const setHtml = readFileSync(new URL("../../../fixtures/alphaspel-set.html", import.meta.url), "utf8");
@@ -140,6 +140,51 @@ test("AlphaspelScraper workers claim each set once", async () => {
   assert.equal(listings.length, 2);
   assert.equal(calls.filter((url) => url === "https://www.alphaspel.se/10th-edition/").length, 1);
   assert.equal(calls.filter((url) => url === "https://www.alphaspel.se/magic-2011/").length, 1);
+});
+
+test("parseLastPage reads the highest page link, 1 without pagination", () => {
+  const pager = (hrefs: string[]) => `<ul class="pagination">${hrefs.map((h) => `<li class="page-item"><a class="page-link" href="${h}">x</a></li>`).join("")}</ul>`;
+  assert.equal(parseLastPage("<html></html>"), 1);
+  assert.equal(parseLastPage(pager(["/s/?page=2", "/s/?page=3", "/s/?page=12", "/s/?page=14"])), 14);
+  assert.equal(parseLastPage(pager(["/s/?order_by=name&page=5"])), 5);
+});
+
+test("AlphaspelScraper fetches exactly the linked pages, no probe past the end", async () => {
+  const db = openDb(":memory:");
+  const catalog = new SqliteCatalog(db);
+  catalog.replaceAll(printings());
+  const calls: string[] = [];
+  const pager = `<ul class="pagination"><li><a href="/10th-edition/?page=2">2</a></li><li><a href="/10th-edition/?page=3">3</a></li></ul>`;
+  const scraper = new AlphaspelScraper(db, async (url: string) => {
+    calls.push(url);
+    if (url.endsWith("/1978-mtg-loskort/")) return new Response(rootHtml(["10th Edition"]));
+    const page = Number(/page=(\d+)/.exec(url)?.[1] ?? 1);
+    return new Response(listHtml("10th Edition", `Drudge Skeletons`) + (page === 1 ? pager : ""));
+  });
+
+  await scraper.scrape(catalog, { workers: 1 });
+  assert.deepEqual(calls.filter((u) => u.includes("10th-edition")).map((u) => u.slice(u.indexOf("10th-edition"))), [
+    "10th-edition/", "10th-edition/?page=2", "10th-edition/?page=3",
+  ]);
+});
+
+test("AlphaspelScraper reuses the previous snapshot instead of fetching the product page", async () => {
+  const db = openDb(":memory:");
+  const catalog = new SqliteCatalog(db);
+  catalog.replaceAll(printings());
+  const list = setHtml.replaceAll("Magic löskort: 10th Edition: Goblin Lore", "Magic löskort: 10th Edition: Ambiguous Card");
+  const url = parseListPage(list).find((i) => i.url.includes("168076"))!.url;
+  const calls: string[] = [];
+  const fetchFake = async (u: string) => {
+    calls.push(u);
+    if (u.endsWith("/1978-mtg-loskort/")) return new Response(`<div class="categories"><div class="category-name"><h4><a href="/2441-10th-edition/">10th Edition</a></h4></div></div>`);
+    if (u.includes("168076")) return new Response(productHtml);
+    return new Response(list);
+  };
+
+  const listings = await new AlphaspelScraper(db, fetchFake, new Map([[url, "drudge"]])).scrape(catalog, { workers: 1 });
+  assert.equal(listings.find((l) => l.url === url)?.printingId, "drudge");
+  assert.equal(calls.filter((u) => u.includes("168076")).length, 0);
 });
 
 function printings(): PricedPrinting[] {

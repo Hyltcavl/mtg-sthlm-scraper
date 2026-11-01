@@ -3,13 +3,14 @@ import { ScryfallSource } from "./infra/scryfall/scryfall.ts";
 import { ManatorskScraper } from "./infra/shops/manatorsk.ts";
 import { AlphaspelScraper } from "./infra/shops/alphaspel.ts";
 import { DragonslairScraper } from "./infra/shops/dragonslair.ts";
+import { httpStats } from "./infra/http.ts";
 import { startServer } from "./web/server.ts";
 import { refreshCatalog } from "./app/refreshCatalog.ts";
 import { scrapeShop } from "./app/scrapeShop.ts";
 import { findDeals } from "./app/findDeals.ts";
 import { mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
-import type { Listing } from "./domain/listing.ts";
+import { SHOPS, type Listing, type Shop } from "./domain/listing.ts";
 import { toRow } from "./web/server.ts";
 import type { ShopScraper } from "./domain/ports.ts";
 
@@ -35,32 +36,40 @@ try {
     if (workers !== undefined && (!Number.isInteger(workers) || workers <= 0)) usage();
     if (target !== "manatorsk" && target !== "alphaspel" && target !== "dragonslair" && target !== "all") usage();
     const num = (flag: string) => (args.includes(flag) ? Number(args[args.indexOf(flag) + 1]) : undefined);
+    if (args.includes("--snapshot") && target === "all") usage(); // one file per shop
     const dlOpts = { maxPages: num("--pages"), budget: num("--budget"), delayMs: num("--delay") };
     const db = openDb();
     const catalog = new SqliteCatalog(db);
     const repo = new SqliteListings(db);
-    const scrapers: ShopScraper[] = [new ManatorskScraper(), new AlphaspelScraper(db), new DragonslairScraper(dlOpts)];
+    // the previous Alphaspel snapshot tells us which product pages we already resolved to a printing
+    const prev = args.includes("--snapshot") ? args[args.indexOf("--snapshot") + 1] : undefined;
+    const known = new Map<string, string>();
+    if (target === "alphaspel" && prev && existsSync(prev))
+      for (const l of JSON.parse(readFileSync(prev, "utf8")) as Listing[]) if (l.printingId) known.set(l.url, l.printingId);
+    const scrapers: ShopScraper[] = [new ManatorskScraper(), new AlphaspelScraper(db, undefined, known), new DragonslairScraper(dlOpts)];
     for (const scraper of scrapers.filter((s) => target === "all" || s.shop === target)) {
       const count = await scrapeShop(scraper, catalog, repo, { fresh, workers });
       console.log(`scrape ${scraper.shop}: saved ${count} listings`);
+      console.log(`http: ${Object.entries(httpStats).map(([k, v]) => `${k}=${v}`).join(" ")}`);
       stamp(scraper.shop);
       const snapshot = args.includes("--snapshot") ? args[args.indexOf("--snapshot") + 1] : undefined;
-      if (snapshot && scraper.shop === "dragonslair") {
+      if (snapshot) {
         mkdirSync(dirname(snapshot), { recursive: true });
-        writeFileSync(snapshot, JSON.stringify(repo.all().filter((l) => l.shop === "dragonslair")));
+        writeFileSync(snapshot, JSON.stringify(repo.all().filter((l) => l.shop === scraper.shop)));
         writeFileSync(metaPath(snapshot), JSON.stringify({ scrapedAt: stamps()[scraper.shop] }));
         console.log(`snapshot: ${snapshot}`);
       }
     }
   } else if (command === "load") {
-    // Import a committed snapshot (Cloudflare blocks the dragonslair scrape from GitHub runners)
+    // Import a committed snapshot (data/<shop>.json); the shop is the file name. Lets the site be rebuilt without scraping.
     const file = args[1];
-    if (!file) usage();
+    const shop = (file ?? "").split("/").pop()?.replace(/\.json$/, "") as Shop;
+    if (!file || !SHOPS.includes(shop)) usage();
     const listings = JSON.parse(readFileSync(file, "utf8")) as Listing[];
-    new SqliteListings(openDb()).replaceForShop("dragonslair", listings);
+    new SqliteListings(openDb()).replaceForShop(shop, listings);
     // the snapshot was scraped earlier than this load; carry its own timestamp
-    if (existsSync(metaPath(file))) stamp("dragonslair", JSON.parse(readFileSync(metaPath(file), "utf8")).scrapedAt);
-    console.log(`load: ${listings.length} dragonslair listings from ${file}`);
+    if (existsSync(metaPath(file))) stamp(shop, JSON.parse(readFileSync(metaPath(file), "utf8")).scrapedAt);
+    console.log(`load: ${listings.length} ${shop} listings from ${file}`);
   } else if (command === "export") {
     const dir = args[1] ?? "docs";
     const db = openDb();
@@ -88,6 +97,6 @@ try {
 }
 
 function usage(): never {
-  console.error("usage: node src/cli.ts refresh | scrape <manatorsk|alphaspel|dragonslair|all> [--fresh] [--workers N] [--pages N] [--budget REQUESTS] [--delay MS] [--snapshot file (dragonslair)] | load <file> | export [dir] | serve [port]");
+  console.error("usage: node src/cli.ts refresh | scrape <manatorsk|alphaspel|dragonslair|all> [--fresh] [--workers N] [--pages N] [--budget REQUESTS] [--delay MS] [--snapshot data/<shop>.json (single shop)] | load data/<shop>.json | export [dir] | serve [port]");
   process.exit(1);
 }
