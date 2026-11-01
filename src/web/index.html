@@ -17,13 +17,15 @@
     small { color: #666; }
     .set { display: flex; align-items: center; gap: .3rem; }
     .set img { height: 1em; width: 1em; max-height: none; }
-    #updated { color: #666; font-size: .85rem; }
+    #updated, #scraped { color: #666; font-size: .85rem; }
+    .stale { color: #b00; font-weight: 600; }
     .filters { display: flex; gap: 1rem; margin: 1rem 0; }
   </style>
 </head>
 <body>
   <h1>MTG Deals</h1>
   <div id="updated"></div>
+  <div id="scraped"></div>
   <div class="filters">
     <label>Butik <select id="shop"><option value="">Alla</option></select></label>
     <label>Min diff SEK <input id="minDiff" type="number" value="0"></label>
@@ -109,6 +111,18 @@
         return tr;
       }));
     }
+    // last scrape per shop; red when missing or older than 5 days
+    function showScraped(at) {
+      const box = document.querySelector("#scraped");
+      box.replaceChildren("Senaste scraping: ");
+      ["manatorsk", "alphaspel", "dragonslair"].forEach((s, i) => {
+        const t = at[s] ? new Date(at[s]) : null;
+        const span = document.createElement("span");
+        span.textContent = s + " " + (t ? t.toISOString().slice(0, 16).replace("T", " ") + " UTC" : "saknas");
+        if (!t || Date.now() - t > 5 * 86400e3) span.className = "stale";
+        box.append(i ? " · " : "", span);
+      });
+    }
     document.querySelectorAll("th button").forEach(b => b.addEventListener("click", () => {
       sort = { key: b.dataset.sort, dir: sort.key === b.dataset.sort ? -sort.dir : 1 };
       render();
@@ -117,6 +131,7 @@
     minDiff.addEventListener("input", render);
     fetch("deals.json").then(r => r.json()).then(data => {
       deals = data;
+      fetch("shops.json").then(r => r.ok ? r.json() : {}).catch(() => ({})).then(showScraped);
       fetch("updated.txt").then(r => r.ok ? r.text() : "").then(t => document.querySelector("#updated").textContent = t ? "Uppdaterad " + t : "").catch(() => {});
       [...new Set(deals.map(d => d.shop))].sort().forEach(s => shop.append(new Option(s, s)));
       render();

@@ -3,3 +3,4 @@ mtg.db*
 default_cards.json*
 docs/
 data/dragonslair-progress.jsonl
+scraped-at.json

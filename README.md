@@ -48,9 +48,9 @@ Tests are offline: parsers run against `fixtures/`, SQLite uses `:memory:`. See 
 ## Publish (GitHub Pages)
 
 `.github/workflows/scrape.yml` runs every third day (and manually): refresh, scrape Manatorsk and Alphaspel, load the Dragon's Lair snapshot, export `docs/`, deploy to GitHub Pages.
-Enable once: repo Settings, Pages, Source: GitHub Actions. `node src/cli.ts export [dir]` writes index.html, deals.json and updated.txt (preview with `npx serve docs`).
+Enable once: repo Settings, Pages, Source: GitHub Actions. `node src/cli.ts export [dir]` writes index.html, deals.json, shops.json (last scrape per shop, shown at the top of the page) and updated.txt (preview with `npx serve docs`).
 
-Dragon's Lair blocks GitHub runner IPs (Cloudflare 403), so the workflow never scrapes it: it loads the committed `data/dragonslair.json`, which a machine with a Swedish IP keeps fresh (see below). Manual one-off:
+Dragon's Lair blocks GitHub runner IPs (Cloudflare 403), so the workflow never scrapes it: it loads the committed `data/dragonslair.json` (its scrape time comes from `data/dragonslair.meta.json`), which a machine with a Swedish IP keeps fresh (see below). Manual one-off:
 
     node src/cli.ts scrape dragonslair --snapshot data/dragonslair.json
 

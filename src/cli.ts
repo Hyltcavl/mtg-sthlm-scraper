@@ -7,11 +7,17 @@ import { startServer } from "./web/server.ts";
 import { refreshCatalog } from "./app/refreshCatalog.ts";
 import { scrapeShop } from "./app/scrapeShop.ts";
 import { findDeals } from "./app/findDeals.ts";
-import { mkdirSync, copyFileSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Listing } from "./domain/listing.ts";
 import { toRow } from "./web/server.ts";
 import type { ShopScraper } from "./domain/ports.ts";
+
+// When each shop was last scraped (ISO), for the static page. Gitignored; rebuilt on every run/deploy.
+const STAMPS = "scraped-at.json";
+const stamps = (): Record<string, string> => (existsSync(STAMPS) ? JSON.parse(readFileSync(STAMPS, "utf8")) : {});
+const stamp = (shop: string, at = new Date().toISOString()) => writeFileSync(STAMPS, JSON.stringify({ ...stamps(), [shop]: at }));
+const metaPath = (snapshot: string) => snapshot.replace(/\.json$/, ".meta.json");
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -37,10 +43,12 @@ try {
     for (const scraper of scrapers.filter((s) => target === "all" || s.shop === target)) {
       const count = await scrapeShop(scraper, catalog, repo, { fresh, workers });
       console.log(`scrape ${scraper.shop}: saved ${count} listings`);
+      stamp(scraper.shop);
       const snapshot = args.includes("--snapshot") ? args[args.indexOf("--snapshot") + 1] : undefined;
       if (snapshot && scraper.shop === "dragonslair") {
         mkdirSync(dirname(snapshot), { recursive: true });
         writeFileSync(snapshot, JSON.stringify(repo.all().filter((l) => l.shop === "dragonslair")));
+        writeFileSync(metaPath(snapshot), JSON.stringify({ scrapedAt: stamps()[scraper.shop] }));
         console.log(`snapshot: ${snapshot}`);
       }
     }
@@ -50,6 +58,8 @@ try {
     if (!file) usage();
     const listings = JSON.parse(readFileSync(file, "utf8")) as Listing[];
     new SqliteListings(openDb()).replaceForShop("dragonslair", listings);
+    // the snapshot was scraped earlier than this load; carry its own timestamp
+    if (existsSync(metaPath(file))) stamp("dragonslair", JSON.parse(readFileSync(metaPath(file), "utf8")).scrapedAt);
     console.log(`load: ${listings.length} dragonslair listings from ${file}`);
   } else if (command === "export") {
     const dir = args[1] ?? "docs";
@@ -58,6 +68,7 @@ try {
     mkdirSync(dir, { recursive: true });
     copyFileSync(new URL("./web/index.html", import.meta.url), `${dir}/index.html`);
     writeFileSync(`${dir}/deals.json`, JSON.stringify(deals.map(toRow)));
+    writeFileSync(`${dir}/shops.json`, JSON.stringify(stamps()));
     writeFileSync(`${dir}/updated.txt`, new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC");
     console.log(`export: ${deals.length} deals -> ${dir}/`);
   } else if (command === "serve") {
