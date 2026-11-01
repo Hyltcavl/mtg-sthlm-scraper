@@ -29,7 +29,7 @@ Alphaspel checkpoints per set: Ctrl-C and rerun to resume; `--fresh` restarts. `
 
 Columns: image, name (condition/foil), set, price, fair value, diff SEK, diff %, shop, links. Click a header to sort; filter by shop and minimum diff. Hover the image or name to see a larger card image centred on the page.
 
-Fair value = Cardmarket trend (EUR) × 11 × condition factor (NM 1, EX .9, GD .75, PL .6, PO .4). A deal is ≥ 20 % under fair value and fair ≥ 20 SEK (`DEFAULT_POLICY` in `src/domain/valuation.ts`).
+Fair value = Cardmarket trend (EUR) × 11 × condition factor (NM 1, EX .9, GD .75, PL .6, PO .4). A deal is priced at or under fair value (diff ≥ 0) and fair ≥ 20 SEK (`DEFAULT_POLICY` in `src/domain/valuation.ts`).
 
 ## Develop
 

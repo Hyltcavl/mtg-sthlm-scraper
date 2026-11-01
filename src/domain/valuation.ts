@@ -13,11 +13,11 @@ export const CONDITION_FACTOR: Record<Condition, number> = {
 };
 
 export type DealPolicy = {
-  minDiscount: number; // 0.2 = at least 20 % under fair value
+  minDiscount: number; // 0 = at or under fair value; 0.2 = at least 20 % under
   minFairValueSek: number; // ignore bulk
 };
 
-export const DEFAULT_POLICY: DealPolicy = { minDiscount: 0.2, minFairValueSek: 20 };
+export const DEFAULT_POLICY: DealPolicy = { minDiscount: 0, minFairValueSek: 20 };
 
 export type Deal = {
   listing: Listing;

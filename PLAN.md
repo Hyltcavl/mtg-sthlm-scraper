@@ -45,7 +45,7 @@ Regler (i `src/domain/`, ren TS, noll I/O, 100 % testad):
 - `conditionFactor`: NM 1.0, EX 0.9, GD 0.75, PL 0.6, PO 0.4
 - `fairValueSek(price, {condition, foil}, fx)`; foil utan `eurFoil` ⇒ inget värde
 - `evaluateDeal(listing, printing, price, policy)` → `Deal | null`
-- `DealPolicy` default: `minDiscount 0.2`, `minFairValueSek 20`
+- `DealPolicy` default: `minDiscount 0` (at or under fair value), `minFairValueSek 20`
 
 ## Arkitektur (hexagonal, tunn)
 

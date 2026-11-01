@@ -19,7 +19,9 @@
     .set img { height: 1em; width: 1em; max-height: none; }
     #updated, #scraped { color: #666; font-size: .85rem; }
     .stale { color: #b00; font-weight: 600; }
-    .filters { display: flex; gap: 1rem; margin: 1rem 0; }
+    .filters { display: flex; gap: 1rem; margin: 1rem 0; flex-wrap: wrap; align-items: center; }
+    #q { min-width: 14rem; }
+    #count { color: #666; font-size: .85rem; }
   </style>
 </head>
 <body>
@@ -27,8 +29,10 @@
   <div id="updated"></div>
   <div id="scraped"></div>
   <div class="filters">
+    <label>Sök kort <input id="q" type="search" placeholder="Kortnamn" autocomplete="off"></label>
     <label>Butik <select id="shop"><option value="">Alla</option></select></label>
     <label>Min diff SEK <input id="minDiff" type="number" value="0"></label>
+    <span id="count"></span>
   </div>
   <table>
     <thead>
@@ -50,6 +54,8 @@
     const rows = document.querySelector("#rows");
     const shop = document.querySelector("#shop");
     const minDiff = document.querySelector("#minDiff");
+    const q = document.querySelector("#q");
+    const count = document.querySelector("#count");
     const num = new Set(["priceSek", "fairValueSek", "diffSek", "diffPct"]);
 
     function cell(text) {
@@ -67,10 +73,12 @@
       const filtered = deals
         .filter(d => !shop.value || d.shop === shop.value)
         .filter(d => d.diffSek >= Number(minDiff.value || 0))
+        .filter(d => !q.value.trim() || d.name.toLowerCase().includes(q.value.trim().toLowerCase()))
         .sort((a, b) => {
           const av = a[sort.key], bv = b[sort.key];
           return (num.has(sort.key) ? av - bv : String(av).localeCompare(String(bv))) * sort.dir;
         });
+      count.textContent = filtered.length + " av " + deals.length + " kort";
       rows.replaceChildren(...filtered.map(d => {
         const tr = document.createElement("tr");
         const imgTd = document.createElement("td");
@@ -129,6 +137,7 @@
     }));
     shop.addEventListener("change", render);
     minDiff.addEventListener("input", render);
+    q.addEventListener("input", render);
     fetch("deals.json").then(r => r.json()).then(data => {
       deals = data;
       fetch("shops.json").then(r => r.ok ? r.json() : {}).catch(() => ({})).then(showScraped);

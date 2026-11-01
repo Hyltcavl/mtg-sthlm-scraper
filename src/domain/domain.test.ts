@@ -43,15 +43,21 @@ test("evaluateDeal returns deal when discount and value thresholds are met", () 
   assert.equal(d.diffPct, 0.596);
 });
 
-test("evaluateDeal rejects small discount, bulk, and unpriced", () => {
+test("evaluateDeal keeps cards priced at fair value, rejects above fair, bulk, and unpriced", () => {
   const price = { eur: 5, eurFoil: null };
-  assert.equal(evaluateDeal(listing({ priceSek: 50 }), printing, price, undefined, 11), null);
+  const same = evaluateDeal(listing({ priceSek: 55 }), printing, price, undefined, 11);
+  assert.ok(same);
+  assert.equal(same.diffSek, 0);
+  assert.equal(evaluateDeal(listing({ priceSek: 56 }), printing, price, undefined, 11), null);
   assert.equal(evaluateDeal(listing({ priceSek: 1 }), printing, { eur: 1, eurFoil: null }, undefined, 11), null);
   assert.equal(evaluateDeal(listing(), printing, { eur: null, eurFoil: null }), null);
 });
 
 test("evaluateDeal honours custom policy", () => {
-  const d = evaluateDeal(listing({ priceSek: 50 }), printing, { eur: 5, eurFoil: null }, { minDiscount: 0.05, minFairValueSek: 0 }, 11);
+  const price = { eur: 5, eurFoil: null };
+  const strict = { minDiscount: 0.2, minFairValueSek: 0 };
+  assert.equal(evaluateDeal(listing({ priceSek: 50 }), printing, price, strict, 11), null);
+  const d = evaluateDeal(listing({ priceSek: 40 }), printing, price, strict, 11);
   assert.ok(d);
-  assert.equal(d.diffSek, 5);
+  assert.equal(d.diffSek, 15);
 });
