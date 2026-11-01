@@ -3,6 +3,10 @@ name: Scrape and publish
 on:
   schedule:
     - cron: "30 5 */3 * *" # every third day-of-month (1,4,7,...)
+  # Publish as soon as the home cron pushes a fresh Dragon's Lair snapshot
+  push:
+    branches: [main]
+    paths: ["data/dragonslair.json"]
   workflow_dispatch:
 
 permissions:
