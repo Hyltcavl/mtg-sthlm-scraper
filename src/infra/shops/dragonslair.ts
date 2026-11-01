@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import * as cheerio from "cheerio";
 import type { Condition, Listing } from "../../domain/listing.ts";
 import type { CardCatalog, ScrapeOptions, ShopScraper } from "../../domain/ports.ts";
-import { politeFetch } from "../http.ts";
+import { httpStats, politeFetch } from "../http.ts";
 
 const BASE = "https://astraeus.dragonslair.se";
 const LIST = `${BASE}/product/magic/card-singles/store:kungsholmstorg`;
@@ -173,6 +173,9 @@ export class DragonslairScraper implements ShopScraper {
         console.log(`dragonslair: INCOMPLETE - ${e.message}. ${chunks.length} pages saved; run the same command to continue.`);
       }
       throw e;
+    } finally {
+      // one machine-readable line per run, summed by scripts/scrape-dragonslair.sh-style wrappers
+      console.log(`dragonslair: stats pages=${this.requests} ${Object.entries(httpStats).map(([k, v]) => `${k}=${v}`).join(" ")}`);
     }
 
     const byId = new Map<string, Row>(); // inventory shifts between requests, so a row can appear twice
